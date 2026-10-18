@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Newtonite — Operations Under Pressure</title>
+  <!-- Tailwind CSS CDN for instant, zero-build styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- Conflict Alert Banner (Global Toast) -->
+  <div id="conflictBanner" class="hidden fixed top-4 right-4 z-50 max-w-md bg-amber-500/20 border border-amber-500/40 text-amber-200 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md flex items-start space-x-3 animate-bounce">
+    <span class="text-xl">⚠️</span>
+    <div class="flex-1 text-sm">
+      <p class="font-semibold text-amber-300" id="conflictTitle">Concurrency Conflict (HTTP 409)</p>
+      <p id="conflictMessage" class="text-xs text-amber-200/90 mt-0.5">Item was modified by another user.</p>
+      <button id="conflictReloadBtn" class="mt-2 text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1 rounded-md transition shadow">
+        🔄 Reload Item Now
+      </button>
+    </div>
+    <button onclick="document.getElementById('conflictBanner').classList.add('hidden')" class="text-amber-400 hover:text-white text-lg">&times;</button>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="hidden fixed bottom-5 right-5 z-50 bg-slate-800 border border-slate-700 text-white px-4 py-3 rounded-lg shadow-xl text-sm flex items-center space-x-2">
+    <span id="toastIcon">ℹ️</span>
+    <span id="toastMessage">Notification</span>
+  </div>
+
+  <!-- Navigation Bar -->
+  <header class="bg-slate-950/80 border-b border-slate-800 sticky top-0 z-40 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/30">
+          N
+        </div>
+        <div>
+          <h1 class="text-base font-bold text-white tracking-tight flex items-center gap-2">
+            Newtonite <span class="text-xs font-medium px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">Ops Under Pressure</span>
+          </h1>
+          <p class="text-[11px] text-slate-400">High-Concurrency Incident & Work Order Platform</p>
+        </div>
+      </div>
+
+      <!-- Right Header: User Info & Demo Role Switcher -->
+      <div id="headerUserSection" class="flex items-center space-x-4">
+        <!-- Quick Switch Demo Role Pills -->
+        <div class="hidden md:flex items-center space-x-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg p-1">
+          <span class="text-slate-500 px-2 font-mono text-[10px]">DEMO ROLES:</span>
+          <button onclick="quickLogin('admin@newtonite.io')" class="px-2 py-1 rounded text-purple-300 hover:bg-purple-950/60 font-medium transition" title="Alice Walker (Admin across all teams)">Admin</button>
+          <button onclick="quickLogin('lead.infra@newtonite.io')" class="px-2 py-1 rounded text-blue-300 hover:bg-blue-950/60 font-medium transition" title="Bob Chen (Infra Lead - Can Approve)">Lead</button>
+          <button onclick="quickLogin('eng.infra1@newtonite.io')" class="px-2 py-1 rounded text-emerald-300 hover:bg-emerald-950/60 font-medium transition" title="Eve Patel (Infra Member - Cannot Approve)">Member</button>
+          <button onclick="quickLogin('viewer.intern@newtonite.io')" class="px-2 py-1 rounded text-amber-300 hover:bg-amber-950/60 font-medium transition" title="Jack Taylor (Viewer - Read-only)">Viewer</button>
+        </div>
+
+        <div id="currentUserBadge" class="flex items-center space-x-2 text-xs">
+          <!-- Populated by JS -->
+        </div>
+
+        <button id="logoutBtn" class="text-xs text-slate-400 hover:text-rose-400 px-2 py-1 rounded border border-slate-800 hover:border-rose-900/50 transition">
+          Sign out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Login Modal / Screen -->
+  <div id="loginScreen" class="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
+      <div class="text-center mb-6">
+        <div class="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center font-bold text-2xl mx-auto shadow-lg shadow-indigo-500/30">N</div>
+        <h2 class="text-2xl font-bold mt-4 text-white">Operations Under Pressure</h2>
+        <p class="text-sm text-slate-400 mt-1">Select a demo persona or log in with credentials</p>
+      </div>
+
+      <div class="mb-6 bg-slate-950/60 border border-slate-800/80 rounded-xl p-4">
+        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">⚡ 1-Click Demo Login</p>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <button onclick="quickLogin('admin@newtonite.io')" class="p-2 text-left rounded-lg bg-slate-900 hover:bg-slate-800 border border-purple-900/50 hover:border-purple-600 transition">
+            <span class="font-bold text-purple-400 block">Alice Walker</span>
+            <span class="text-[10px] text-slate-400">Admin (All Teams)</span>
+          </button>
+          <button onclick="quickLogin('lead.infra@newtonite.io')" class="p-2 text-left rounded-lg bg-slate-900 hover:bg-slate-800 border border-blue-900/50 hover:border-blue-600 transition">
+            <span class="font-bold text-blue-400 block">Bob Chen</span>
+            <span class="text-[10px] text-slate-400">Lead (Infra Team)</span>
+          </button>
+          <button onclick="quickLogin('eng.infra1@newtonite.io')" class="p-2 text-left rounded-lg bg-slate-900 hover:bg-slate-800 border border-emerald-900/50 hover:border-emerald-600 transition">
+            <span class="font-bold text-emerald-400 block">Eve Patel</span>
+            <span class="text-[10px] text-slate-400">Member (Infra Team)</span>
+          </button>
+          <button onclick="quickLogin('viewer.intern@newtonite.io')" class="p-2 text-left rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-900/50 hover:border-amber-600 transition">
+            <span class="font-bold text-amber-400 block">Jack Taylor</span>
+            <span class="text-[10px] text-slate-400">Viewer (Read-only)</span>
+          </button>
+        </div>
+      </div>
+
+      <form id="loginForm" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Email Address</label>
+          <input type="email" id="loginEmail" required class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" value="admin@newtonite.io">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Password</label>
+          <input type="password" id="loginPassword" required class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500" value="password123">
+        </div>
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow-lg shadow-indigo-600/30">
+          Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Application Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- KPI Metric Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div onclick="setNeedsAttentionFilter('assigned_to_me')" class="cursor-pointer bg-slate-950/60 border border-slate-800 hover:border-indigo-500/50 rounded-xl p-4 transition shadow">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Assigned To Me</span>
+          <span class="text-indigo-400">👤</span>
+        </div>
+        <div id="statAssigned" class="text-2xl font-bold text-white mt-2">--</div>
+        <div class="text-[10px] text-slate-500 mt-1">Active items on your plate</div>
+      </div>
+
+      <div onclick="setNeedsAttentionFilter('unassigned_urgent')" class="cursor-pointer bg-slate-950/60 border border-slate-800 hover:border-rose-500/50 rounded-xl p-4 transition shadow">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Unassigned Urgent</span>
+          <span class="text-rose-400">🔥</span>
+        </div>
+        <div id="statUrgent" class="text-2xl font-bold text-rose-400 mt-2">--</div>
+        <div class="text-[10px] text-slate-500 mt-1">Requires immediate claim</div>
+      </div>
+
+      <div onclick="setNeedsAttentionFilter('awaiting_approval')" class="cursor-pointer bg-slate-950/60 border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 transition shadow">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Awaiting Approval</span>
+          <span class="text-amber-400">🛡️</span>
+        </div>
+        <div id="statApproval" class="text-2xl font-bold text-amber-400 mt-2">--</div>
+        <div class="text-[10px] text-slate-500 mt-1">Lead sign-off required</div>
+      </div>
+
+      <div onclick="setNeedsAttentionFilter(null)" class="cursor-pointer bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl p-4 transition shadow">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Total Team Items</span>
+          <span class="text-blue-400">📊</span>
+        </div>
+        <div id="statTotal" class="text-2xl font-bold text-slate-200 mt-2">--</div>
+        <div class="text-[10px] text-slate-500 mt-1">Non-closed team workload</div>
+      </div>
+    </div>
+
+    <!-- Filter and Controls Header -->
+    <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-3">
+      <!-- Top Row: Needs Attention Tabs + New Item Button -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center space-x-1 bg-slate-900 border border-slate-800 rounded-lg p-1 text-xs" id="attentionTabs">
+          <button data-tab="all" onclick="setNeedsAttentionFilter(null)" class="px-3 py-1.5 rounded-md font-medium bg-indigo-600 text-white shadow">All Items</button>
+          <button data-tab="assigned_to_me" onclick="setNeedsAttentionFilter('assigned_to_me')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white">Assigned to Me</button>
+          <button data-tab="unassigned_urgent" onclick="setNeedsAttentionFilter('unassigned_urgent')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white">Unassigned Urgent</button>
+          <button data-tab="awaiting_approval" onclick="setNeedsAttentionFilter('awaiting_approval')" class="px-3 py-1.5 rounded-md font-medium text-slate-400 hover:text-white">Awaiting Approval</button>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <label class="flex items-center space-x-2 text-xs text-slate-400 cursor-pointer select-none">
+            <input type="checkbox" id="optimisticToggle" checked class="rounded border-slate-700 text-indigo-600 focus:ring-0">
+            <span>Optimistic UI updates</span>
+          </label>
+          <button id="openCreateModalBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center space-x-1.5 transition shadow-lg shadow-indigo-600/20">
+            <span>+</span> <span>New Work Item</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Bottom Row: Search & Filters -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 pt-2 border-t border-slate-800/80">
+        <!-- Team Selector -->
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">Team Scoping</label>
+          <select id="teamFilter" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+
+        <!-- Status Filter -->
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">Status</label>
+          <select id="statusFilter" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+            <option value="">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="awaiting_approval">Awaiting Approval</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+
+        <!-- Priority Filter -->
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">Priority</label>
+          <select id="priorityFilter" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+            <option value="">All Priorities</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+
+        <!-- Assignee Filter -->
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">Assignee</label>
+          <select id="assigneeFilter" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+            <option value="">All Assignees</option>
+            <option value="me">Assigned to Me</option>
+            <option value="unassigned">Unassigned Only</option>
+          </select>
+        </div>
+
+        <!-- Text Search -->
+        <div>
+          <label class="block text-[11px] font-medium text-slate-400 mb-1">Server-Side Search</label>
+          <input type="text" id="searchInput" placeholder="Search title, issues..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+      </div>
+    </div>
+
+    <!-- Work Items Table -->
+    <div class="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden shadow">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-900/80 border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+            <tr>
+              <th class="py-3 px-4">Item #</th>
+              <th class="py-3 px-4">Title & Type</th>
+              <th class="py-3 px-4">Priority</th>
+              <th class="py-3 px-4">Status</th>
+              <th class="py-3 px-4">Team</th>
+              <th class="py-3 px-4">Assignee</th>
+              <th class="py-3 px-4">Version</th>
+              <th class="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="itemsTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Footer -->
+      <div class="bg-slate-900/60 border-t border-slate-800 px-4 py-3 flex items-center justify-between text-xs text-slate-400">
+        <div id="paginationInfo">Showing 0 items</div>
+        <div class="flex items-center space-x-2">
+          <button id="resetCursorBtn" onclick="resetPagination()" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white text-xs disabled:opacity-40 transition">
+            First Page
+          </button>
+          <button id="loadMoreBtn" onclick="loadNextPage()" class="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-40 transition">
+            Next Page (Cursor) &rarr;
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Create Item Modal -->
+  <div id="createModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white">Create Work Item</h3>
+        <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="createItemForm" class="space-y-3 mt-4 text-xs">
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Title *</label>
+          <input type="text" id="createTitle" required placeholder="e.g. Memory leak in background ingestion worker" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Team *</label>
+            <select id="createTeamId" required class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+              <!-- Populated by JS -->
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Item Type</label>
+            <select id="createItemType" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+              <option value="incident">Incident</option>
+              <option value="customer_issue">Customer Issue</option>
+              <option value="payment">Payment</option>
+              <option value="compliance">Compliance</option>
+              <option value="task" selected>Task</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Priority</label>
+            <select id="createPriority" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Assignee</label>
+            <select id="createAssigneeId" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+              <option value="">Leave Unassigned</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Description</label>
+          <textarea id="createDescription" rows="3" placeholder="Context, impact, and diagnostic steps..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+
+        <!-- Idempotency Key demonstration notice -->
+        <div class="bg-indigo-950/40 border border-indigo-800/50 rounded-lg p-2.5 text-[11px] text-indigo-300">
+          <p class="font-semibold">🛡️ Protected by Idempotency-Key Header</p>
+          <p class="text-indigo-400/80 mt-0.5">Rapid double-clicking or network retries will not produce duplicate items.</p>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeCreateModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">Cancel</button>
+          <button type="submit" id="submitCreateBtn" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">Create Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Item Detail Drawer / Slide-over -->
+  <div id="detailDrawer" class="hidden fixed inset-0 z-50 overflow-hidden bg-slate-950/70 backdrop-blur-sm flex justify-end">
+    <div class="max-w-2xl w-full bg-slate-900 border-l border-slate-800 h-full overflow-y-auto flex flex-col shadow-2xl">
+      <!-- Header -->
+      <div class="p-6 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-slate-900 z-10">
+        <div class="flex items-center space-x-2">
+          <span id="detailId" class="font-mono text-sm font-bold text-indigo-400">#0000</span>
+          <span id="detailType" class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-800 text-slate-300">TASK</span>
+          <span id="detailVersion" class="px-2 py-0.5 rounded text-[10px] font-mono bg-indigo-900/60 text-indigo-300 border border-indigo-700/50" title="Optimistic locking version">v1</span>
+        </div>
+        <button onclick="closeDetailDrawer()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-6 flex-1 text-xs">
+        <div>
+          <h2 id="detailTitle" class="text-lg font-bold text-white">Work Item Title</h2>
+          <p id="detailDescription" class="mt-2 text-slate-300 whitespace-pre-wrap leading-relaxed bg-slate-950/50 p-3 rounded-lg border border-slate-800/80">Description text</p>
+        </div>
+
+        <!-- Metadata Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+          <div>
+            <span class="text-[10px] text-slate-500 block uppercase">Status</span>
+            <span id="detailStatus" class="font-semibold text-white">Open</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block uppercase">Priority</span>
+            <span id="detailPriority" class="font-semibold">Medium</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block uppercase">Assignee</span>
+            <span id="detailAssignee" class="font-semibold text-slate-300">Unassigned</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block uppercase">Team</span>
+            <span id="detailTeam" class="font-semibold text-slate-300">Infra</span>
+          </div>
+        </div>
+
+        <!-- Workflow Actions -->
+        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-white text-xs uppercase tracking-wide">Workflow Transitions</span>
+            <span class="text-[10px] text-slate-400 font-mono">Server Enforced</span>
+          </div>
+
+          <div id="workflowActions" class="flex flex-wrap gap-2">
+            <!-- Populated dynamically based on status and user role -->
+          </div>
+
+          <!-- Stale Version Simulation Button (for interactive reviewer testing!) -->
+          <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Simulate stale edit conflict:</span>
+            <button onclick="simulateStaleEdit()" class="px-2.5 py-1 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-800/60 text-amber-300 font-mono transition">
+              ⚡ Trigger 409 Conflict
+            </button>
+          </div>
+        </div>
+
+        <!-- Activity Timeline (Append-Only Audit Trail) -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-white text-xs uppercase tracking-wide">Activity Timeline (Audit Log)</h4>
+            <span class="text-[10px] text-slate-500 font-mono">Append-Only</span>
+          </div>
+          <div id="detailTimeline" class="space-y-2 border-l-2 border-slate-800 ml-2 pl-4">
+            <!-- Timeline items rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Comments Section -->
+        <div class="space-y-3">
+          <h4 class="font-bold text-white text-xs uppercase tracking-wide">Comments & Discussion</h4>
+          <div id="detailComments" class="space-y-2">
+            <!-- Comments rendered by JS -->
+          </div>
+          <form id="commentForm" class="space-y-2">
+            <textarea id="commentInput" rows="2" placeholder="Write an operational update..." class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"></textarea>
+            <div class="flex justify-end">
+              <button type="submit" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs">Post Comment</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
